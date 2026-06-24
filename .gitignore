@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*
+*.pyc
+__pycache__/
+.venv/
+venv/
+.superpowers/brainstorm/
+.DS_Store
+backend/audio_cache/
+backend/data/prefs/
+backend/data/current/*.mp3
+news-companion/backend/.env
+news-companion/

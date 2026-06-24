@@ -1,0 +1,32 @@
+{
+  "name": "news-cast",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.38",
+    "vue-router": "^4.4.3",
+    "pinia": "^2.2.2",
+    "lucide-vue-next": "^0.441.0",
+    "radix-vue": "^1.9.6",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.3",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.3",
+    "typescript": "~5.5.4",
+    "vite": "^5.4.8",
+    "vue-tsc": "^2.1.6",
+    "tailwindcss": "^3.4.12",
+    "postcss": "^8.4.47",
+    "autoprefixer": "^10.4.20",
+    "@types/node": "^22.5.5"
+  }
+}
