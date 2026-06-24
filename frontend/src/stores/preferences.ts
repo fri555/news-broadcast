@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { API_BASE, API_HEADERS } from '@/api'
 import type { UserPreferences, CompanionSettings } from '@/types'
 
 const STORAGE_KEY = 'newscast_prefs'
@@ -68,7 +69,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   // 后端同步
   async function syncWithServer() {
     try {
-      const resp = await fetch(`/api/preferences/${userId.value}`)
+      const resp = await fetch(`${API_BASE}/preferences/${userId.value}`, { headers: API_HEADERS })
       if (resp.ok) {
         const serverData = await resp.json()
         // 合并：服务器优先，但本地有更新的保留
@@ -80,9 +81,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   async function saveToServer() {
     try {
-      await fetch(`/api/preferences/${userId.value}`, {
+      await fetch(`${API_BASE}/preferences/${userId.value}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: API_HEADERS,
         body: JSON.stringify(prefs.value),
       })
     } catch (e) { /* server unavailable */ }

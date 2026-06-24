@@ -1,10 +1,14 @@
 import type { NewsItem, NewsListResponse, TopicsResponse, NewsSourcesResponse, BroadcastResult, BroadcastNewsItem, ChatMessage, TTSVoicesResponse } from '@/types'
 
-const BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+export const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'bypass-tunnel-reminder': 'true',
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch(`${API_BASE}${url}`, {
+    headers: API_HEADERS,
     ...options,
   })
   if (!res.ok) {
@@ -41,9 +45,9 @@ export const ttsApi = {
   voices: () => request<TTSVoicesResponse>('/tts/voices'),
   /** 获取合成音频 URL */
   synthesize: async (text: string, voice?: string, rate = '+4%', style = 'news') => {
-    const res = await fetch(`${BASE}/tts`, {
+    const res = await fetch(`${API_BASE}/tts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: API_HEADERS,
       body: JSON.stringify({ text, voice, rate, style }),
     })
     if (!res.ok) throw new Error('TTS failed')
@@ -51,7 +55,7 @@ export const ttsApi = {
     return URL.createObjectURL(blob)
   },
   /** 流式 TTS */
-  streamUrl: () => `${BASE}/tts/stream`,
+  streamUrl: () => `${API_BASE}/tts/stream`,
 }
 
 // ── 播客 / 广播 ─────────────────────────────────
@@ -77,9 +81,9 @@ export const askApi = {
       body: JSON.stringify({ message, context, history }),
     }),
   stream: async function* (message: string, context?: Record<string, any>) {
-    const res = await fetch(`${BASE}/ask/stream`, {
+    const res = await fetch(`${API_BASE}/ask/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: API_HEADERS,
       body: JSON.stringify({ message, context, history: [] }),
     })
     if (!res.ok) throw new Error('Stream failed')
