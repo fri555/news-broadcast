@@ -12,7 +12,7 @@ from services.hotboard_fetcher import (
     enrich_with_article_context,
 )
 from services.ai import enrich_hotboard_items, enrich_with_read_aloud, has_ai, build_fallback_detail
-from services.snapshots import read_news_snapshot, write_news_snapshot
+from services.snapshots import read_news_snapshot, read_latest_news_snapshot, write_news_snapshot
 from config import BATCH_LIMIT, DEFAULT_TOPICS
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,24 @@ def _normalize_sources(sources: str = "") -> list[str]:
         return []
     valid = {item["id"] for item in get_source_catalog()}
     return [s.strip() for s in sources.split(",") if s.strip() in valid]
+
+
+def _cached_response(snapshot: dict, selected: list[str], selected_sources: list[str], batch: int) -> dict:
+    payload = dict(snapshot)
+    news = list(payload.get("news", []))
+
+    topic_filtered = [item for item in news if not selected or item.get("topic") in selected]
+    source_filtered = [
+        item for item in topic_filtered
+        if not selected_sources or item.get("sourceId") in selected_sources or item.get("source") in selected_sources
+    ]
+    filtered = source_filtered or topic_filtered or news
+    payload["news"] = filtered[:batch]
+    payload["topics"] = selected
+    payload["cached"] = True
+    if payload.get("cache_fallback"):
+        payload["source"] = f"{payload.get('source', '缓存')} · 最近缓存"
+    return payload
 
 
 @router.get("/topics")
@@ -74,7 +92,10 @@ async def get_news(
     if not refresh:
         snapshot = read_news_snapshot(selected + selected_sources, batch)
         if snapshot and snapshot.get("news"):
-            return snapshot
+            return _cached_response(snapshot, selected, selected_sources, batch)
+        fallback_snapshot = read_latest_news_snapshot()
+        if fallback_snapshot and fallback_snapshot.get("news"):
+            return _cached_response(fallback_snapshot, selected, selected_sources, batch)
 
     try:
         result = await fetch_all_news(selected, selected_sources, limit, force_refresh=refresh)

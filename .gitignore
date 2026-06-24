@@ -12,5 +12,6 @@ venv/
 backend/audio_cache/
 backend/data/prefs/
 backend/data/current/*.mp3
+backend/data/current/news-*.json
 news-companion/backend/.env
 news-companion/

@@ -46,6 +46,16 @@ def read_news_snapshot(topics: list[str], limit: int) -> Optional[dict]:
     return _read_json(news_snapshot_path(topics, limit), NEWS_CACHE_TTL_HOURS)
 
 
+def read_latest_news_snapshot() -> Optional[dict]:
+    paths = sorted(DATA_DIR.glob("news-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in paths:
+        data = _read_json(path, NEWS_CACHE_TTL_HOURS)
+        if data and data.get("news"):
+            data["cache_fallback"] = True
+            return data
+    return None
+
+
 def write_news_snapshot(topics: list[str], limit: int, data: dict) -> None:
     payload = dict(data)
     payload["generated_at"] = datetime.now().isoformat(timespec="seconds")

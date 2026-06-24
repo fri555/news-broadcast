@@ -3,8 +3,35 @@ import { ref, computed } from 'vue'
 import type { NewsItem } from '@/types'
 import { newsApi } from '@/api'
 
+const STORAGE_KEY = 'newscast_news_cache'
+const MEMORY_CACHE_MS = 10 * 60 * 1000
+
+function loadCachedNews(): { items: NewsItem[]; source: string; lastFetched: number } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { items: [], source: '', lastFetched: 0 }
+    const parsed = JSON.parse(raw)
+    return {
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      source: parsed.source || '',
+      lastFetched: Number(parsed.lastFetched) || 0,
+    }
+  } catch {
+    return { items: [], source: '', lastFetched: 0 }
+  }
+}
+
+function saveCachedNews(items: NewsItem[], source: string, lastFetched: number) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    items: items.slice(0, 30),
+    source,
+    lastFetched,
+  }))
+}
+
 export const useNewsStore = defineStore('news', () => {
-  const items = ref<NewsItem[]>([])
+  const cached = loadCachedNews()
+  const items = ref<NewsItem[]>(cached.items)
   const currentIndex = ref(0)
   const readIds = ref<Set<string>>(new Set())
   const loading = ref(false)
@@ -14,8 +41,8 @@ export const useNewsStore = defineStore('news', () => {
   const availableTopics = ref<string[]>([])
   const availableSources = ref<{ id: string; label: string; kind: string; trust: string; topics: string[]; description: string }[]>([])
   const defaultTopics = ref<string[]>([])
-  const source = ref<string>('')
-  const lastFetched = ref<number>(0)
+  const source = ref<string>(cached.source)
+  const lastFetched = ref<number>(cached.lastFetched)
 
   const currentItem = computed(() => items.value[currentIndex.value] ?? null)
   const totalCount = computed(() => items.value.length)
@@ -40,6 +67,10 @@ export const useNewsStore = defineStore('news', () => {
   }
 
   async function fetchNews(forceRefresh = false) {
+    if (!forceRefresh && items.value.length > 0 && Date.now() - lastFetched.value < MEMORY_CACHE_MS) {
+      fetchNewsSilent()
+      return
+    }
     loading.value = true
     try {
       const topics = selectedTopics.value.length > 0
@@ -54,6 +85,7 @@ export const useNewsStore = defineStore('news', () => {
       source.value = res.source
       readIds.value = new Set()
       lastFetched.value = Date.now()
+      saveCachedNews(items.value, source.value, lastFetched.value)
     } catch {
       if (items.value.length === 0) items.value = []
     } finally {
@@ -81,6 +113,7 @@ export const useNewsStore = defineStore('news', () => {
         source.value = res.source
       }
       lastFetched.value = Date.now()
+      saveCachedNews(items.value, source.value, lastFetched.value)
     } catch { /* silent fail */ }
     finally { refreshing.value = false }
   }

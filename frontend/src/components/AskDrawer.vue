@@ -4,12 +4,12 @@ import { useAskStore } from '@/stores/ask'
 import ChatBubble from './ChatBubble.vue'
 import AskAvatar from './AskAvatar.vue'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
-import { Send, Mic, MicOff } from 'lucide-vue-next'
+import { Send, Mic, MicOff, AlertCircle } from 'lucide-vue-next'
 
 defineEmits<{ close: [] }>()
 const askStore = useAskStore()
 const input = ref('')
-const { isListening, finalText, interimText, supported: voiceSupported, start, stop } = useSpeechRecognition('zh-CN')
+const { isListening, finalText, interimText, error: voiceError, supported: voiceSupported, start, stop } = useSpeechRecognition('zh-CN')
 
 const avatarState = computed(() => {
   if (isListening.value) return 'listening'
@@ -46,6 +46,9 @@ function handleVoice() { isListening.value ? stop() : start({ continuous: true }
           <p v-if="interimText" class="text-app-text text-sm">{{ interimText }}</p>
           <p v-else class="text-app-muted text-sm">正在聆听...</p>
         </div>
+        <p v-if="voiceError" class="mx-5 mb-2 flex items-center gap-1 text-[10px] text-amber-500">
+          <AlertCircle class="w-3 h-3" />{{ voiceError }}
+        </p>
         <div class="flex-1 overflow-y-auto px-5 flex flex-col gap-2 pb-4 max-h-80 scrollbar-hide">
           <ChatBubble v-for="msg in askStore.messages" :key="msg.id" :message="msg" />
           <div v-if="askStore.isTyping" class="flex gap-1.5 px-4 py-3">

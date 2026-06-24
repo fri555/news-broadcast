@@ -21,9 +21,8 @@ const subtitleContainer = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
 let lineDelay: ReturnType<typeof setTimeout> | null = null
 let currentAudio: HTMLAudioElement | null = null
-let bgmContext: AudioContext | null = null
-let bgmGain: GainNode | null = null
-let bgmOscillators: OscillatorNode[] = []
+let bgmAudio: HTMLAudioElement | null = null
+const BGM_URL = `${import.meta.env.BASE_URL}audio/news-bgm-steel.ogg`
 
 const episode = computed(() => podcastStore.episode)
 const effectivePlaybackRate = computed(() => prefs.prefs.companion.speed * playbackSpeed.value)
@@ -67,31 +66,18 @@ function stopTimer() {
 }
 
 function startBgm() {
-  if (bgmContext) return
-  const AudioCtor = window.AudioContext || (window as any).webkitAudioContext
-  if (!AudioCtor) return
-  bgmContext = new AudioCtor()
-  bgmGain = bgmContext.createGain()
-  bgmGain.gain.value = 0.018
-  bgmGain.connect(bgmContext.destination)
-  ;[110, 165, 220].forEach((freq, idx) => {
-    const osc = bgmContext!.createOscillator()
-    osc.type = idx === 1 ? 'triangle' : 'sine'
-    osc.frequency.value = freq
-    osc.connect(bgmGain!)
-    osc.start()
-    bgmOscillators.push(osc)
-  })
+  if (!bgmAudio) {
+    bgmAudio = new Audio(BGM_URL)
+    bgmAudio.loop = true
+    bgmAudio.volume = 0.055
+  }
+  bgmAudio.play().catch(() => { /* browser may block until user gesture settles */ })
 }
 
 function stopBgm() {
-  bgmOscillators.forEach((osc) => {
-    try { osc.stop() } catch { /* already stopped */ }
-  })
-  bgmOscillators = []
-  bgmContext?.close()
-  bgmContext = null
-  bgmGain = null
+  if (!bgmAudio) return
+  bgmAudio.pause()
+  bgmAudio.currentTime = 0
 }
 
 function setLineByTime(time: number) {

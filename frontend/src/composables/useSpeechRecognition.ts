@@ -17,9 +17,19 @@ export function useSpeechRecognition(lang = 'zh-CN') {
   let recognition: any = null
   let manuallyStopped = false
 
-  function start(options?: { continuous?: boolean }) {
+  async function start(options?: { continuous?: boolean }) {
     if (!SpeechRecognition) {
       error.value = '当前浏览器不支持语音识别，请用 Chrome'
+      return
+    }
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream.getTracks().forEach(track => track.stop())
+      }
+    } catch {
+      error.value = '麦克风权限被拦截了，请允许当前页面使用麦克风。'
+      isListening.value = false
       return
     }
     recognition?.abort()

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useNewsStore } from '@/stores/news'
 import { useThemeStore } from '@/stores/theme'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
+import { ttsApi } from '@/api'
+import { Loader2, Volume2 } from 'lucide-vue-next'
 
 const prefs = usePreferencesStore()
 const newsStore = useNewsStore()
@@ -30,6 +32,8 @@ const speeds = [
   { value: 1.5, label: '1.5x' },
 ]
 const allInterests = ['科技', '财经', '体育', '国际', '娱乐', 'AI', '健康', '创投', '教育', '汽车', '游戏', '科学']
+const previewing = ref<string | null>(null)
+let previewAudio: HTMLAudioElement | null = null
 
 const sourceGroups = computed(() => {
   const items = newsStore.availableSources
@@ -49,6 +53,37 @@ function toggleSource(sourceId: string) {
 
 function clearSources() {
   prefs.updatePrefs({ newsSources: [] })
+}
+
+function speedToRate() {
+  const speed = prefs.prefs.companion.speed
+  const percent = Math.round((speed - 1) * 100)
+  return `${percent >= 0 ? '+' : ''}${percent}%`
+}
+
+async function previewVoice(kind: 'news' | 'hostA' | 'hostB') {
+  const voice = kind === 'hostA'
+    ? prefs.prefs.companion.voiceA
+    : kind === 'hostB'
+      ? prefs.prefs.companion.voiceB
+      : prefs.prefs.companion.voiceId
+  const text = kind === 'hostA'
+    ? '大家好，我是主播小暖，今天我们聊聊最值得关注的新闻。'
+    : kind === 'hostB'
+      ? '我是云希，我会补充背景信息和不同角度的观察。'
+      : '这是一段新闻播报试听，帮你判断这个音色是否自然耐听。'
+
+  previewAudio?.pause()
+  previewing.value = kind
+  try {
+    const url = await ttsApi.synthesize(text, voice, speedToRate(), kind)
+    previewAudio = new Audio(url)
+    previewAudio.onended = () => { previewing.value = null }
+    previewAudio.onerror = () => { previewing.value = null }
+    await previewAudio.play()
+  } catch {
+    previewing.value = null
+  }
 }
 
 onMounted(() => {
@@ -75,24 +110,42 @@ onMounted(() => {
         </div>
         <div class="flex justify-between items-center px-4 py-3.5">
           <span class="text-sm text-app-text">新闻/追问音色</span>
-          <select :value="prefs.prefs.companion.voiceId" @change="prefs.updateCompanion({ voiceId: ($event.target as HTMLSelectElement).value })"
-            class="settings-select">
-            <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
-          </select>
+          <div class="voice-control">
+            <select :value="prefs.prefs.companion.voiceId" @change="prefs.updateCompanion({ voiceId: ($event.target as HTMLSelectElement).value })"
+              class="settings-select">
+              <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
+            </select>
+            <button class="preview-btn" @click="previewVoice('news')" aria-label="试听新闻音色">
+              <Loader2 v-if="previewing === 'news'" class="w-3.5 h-3.5 animate-spin" />
+              <Volume2 v-else class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-between items-center px-4 py-3.5">
           <span class="text-sm text-app-text">主播A音色</span>
-          <select :value="prefs.prefs.companion.voiceA" @change="prefs.updateCompanion({ voiceA: ($event.target as HTMLSelectElement).value })"
-            class="settings-select">
-            <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
-          </select>
+          <div class="voice-control">
+            <select :value="prefs.prefs.companion.voiceA" @change="prefs.updateCompanion({ voiceA: ($event.target as HTMLSelectElement).value })"
+              class="settings-select">
+              <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
+            </select>
+            <button class="preview-btn" @click="previewVoice('hostA')" aria-label="试听主播A音色">
+              <Loader2 v-if="previewing === 'hostA'" class="w-3.5 h-3.5 animate-spin" />
+              <Volume2 v-else class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-between items-center px-4 py-3.5">
           <span class="text-sm text-app-text">主播B音色</span>
-          <select :value="prefs.prefs.companion.voiceB" @change="prefs.updateCompanion({ voiceB: ($event.target as HTMLSelectElement).value })"
-            class="settings-select">
-            <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
-          </select>
+          <div class="voice-control">
+            <select :value="prefs.prefs.companion.voiceB" @change="prefs.updateCompanion({ voiceB: ($event.target as HTMLSelectElement).value })"
+              class="settings-select">
+              <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.label }}</option>
+            </select>
+            <button class="preview-btn" @click="previewVoice('hostB')" aria-label="试听主播B音色">
+              <Loader2 v-if="previewing === 'hostB'" class="w-3.5 h-3.5 animate-spin" />
+              <Volume2 v-else class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-between items-center px-4 py-3.5">
           <span class="text-sm text-app-text">全局语速</span>
@@ -102,7 +155,10 @@ onMounted(() => {
           </select>
         </div>
         <div class="flex justify-between items-center px-4 py-3.5"><span class="text-sm text-app-text">称呼方式</span><span class="text-sm text-app-sub">{{ prefs.prefs.companion.addressAs }}</span></div>
-        <div class="flex justify-between items-center px-4 py-3.5"><span class="text-sm text-app-muted">🎭 VTube虚拟形象</span><span class="text-xs text-app-accent">后续支持</span></div>
+        <div class="flex justify-between items-center px-4 py-3.5">
+          <span class="text-sm text-app-muted">🎭 VTube虚拟形象</span>
+          <span class="text-xs text-app-accent">Cubism 4 / .model3.json</span>
+        </div>
       </div>
     </section>
 
@@ -211,5 +267,35 @@ onMounted(() => {
 .settings-select:focus {
   border-color: var(--app-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.voice-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.preview-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--app-divider);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-accent) 10%, var(--app-card));
+  color: var(--app-accent);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.preview-btn:active {
+  transform: scale(0.95);
+}
+
+.preview-btn:hover {
+  border-color: var(--app-accent);
+  background: var(--app-accent-light);
 }
 </style>
