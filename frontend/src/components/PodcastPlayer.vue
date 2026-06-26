@@ -4,7 +4,7 @@ import { usePodcastStore } from '@/stores/podcast'
 import { useNewsStore } from '@/stores/news'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useRouter } from 'vue-router'
-import { ttsApi } from '@/api'
+import { apiAssetUrl, ttsApi } from '@/api'
 import { Play, Pause, SkipBack, SkipForward, Mic, ChevronDown, Sparkles, RefreshCw } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -19,10 +19,12 @@ const currentTime = ref(0)
 const currentLineIndex = ref(0)
 const subtitleContainer = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
-let lineDelay: ReturnType<typeof setTimeout> | null = null
 let currentAudio: HTMLAudioElement | null = null
 let bgmAudio: HTMLAudioElement | null = null
-const BGM_URL = `${import.meta.env.BASE_URL}audio/news-bgm-steel.ogg`
+const lineAudioCache = new Map<number, Promise<string>>()
+const BGM_URL = 'https://freepd.com/music/City%20Sunshine.mp3'
+const BGM_IDLE_VOLUME = 0.12
+const BGM_SPEAKING_VOLUME = 0.025
 
 const episode = computed(() => podcastStore.episode)
 const effectivePlaybackRate = computed(() => prefs.prefs.companion.speed * playbackSpeed.value)
@@ -31,7 +33,6 @@ const duration = computed(() => {
   return Math.max(1, Math.round(base / effectivePlaybackRate.value))
 })
 const currentDisplayTime = computed(() => currentTime.value / effectivePlaybackRate.value)
-const LINE_GAP_MS = 150
 
 function toggle() {
   if (!episode.value || episode.value.transcript.length === 0) return
@@ -58,20 +59,25 @@ function stopLineAudio() {
     currentAudio = null
   }
   speaking.value = false
+  setBgmDucked(false)
 }
 
 function stopTimer() {
   if (timer) { clearInterval(timer); timer = null }
-  if (lineDelay) { clearTimeout(lineDelay); lineDelay = null }
 }
 
 function startBgm() {
   if (!bgmAudio) {
     bgmAudio = new Audio(BGM_URL)
     bgmAudio.loop = true
-    bgmAudio.volume = 0.055
+    bgmAudio.volume = BGM_IDLE_VOLUME
   }
   bgmAudio.play().catch(() => { /* browser may block until user gesture settles */ })
+}
+
+function setBgmDucked(ducked: boolean) {
+  if (!bgmAudio) return
+  bgmAudio.volume = ducked ? BGM_SPEAKING_VOLUME : BGM_IDLE_VOLUME
 }
 
 function stopBgm() {
@@ -132,6 +138,33 @@ const activeLineIndex = computed(() => {
   return episode.value ? currentLineIndex.value : -1
 })
 
+function getLineVoice(idx: number) {
+  const line = episode.value?.transcript[idx]
+  if (!line) return null
+  return {
+    text: line.text,
+    voice: line.speaker === '小暖' ? prefs.prefs.companion.voiceA : prefs.prefs.companion.voiceB,
+    style: line.speaker === '小暖' ? 'hostA' : 'hostB',
+  }
+}
+
+function ensureLineAudio(idx: number) {
+  if (lineAudioCache.has(idx)) return lineAudioCache.get(idx)!
+  const lineVoice = getLineVoice(idx)
+  if (!lineVoice) return Promise.reject(new Error('Line not found'))
+  const line = episode.value?.transcript[idx]
+  const promise = line?.audioUrl
+    ? Promise.resolve(apiAssetUrl(line.audioUrl))
+    : ttsApi.synthesize(lineVoice.text, lineVoice.voice, speedToRate(), lineVoice.style)
+  lineAudioCache.set(idx, promise)
+  return promise
+}
+
+function warmupUpcomingLines(idx: number) {
+  ensureLineAudio(idx + 1).catch(() => lineAudioCache.delete(idx + 1))
+  ensureLineAudio(idx + 2).catch(() => lineAudioCache.delete(idx + 2))
+}
+
 async function playLine(idx: number) {
   if (!episode.value || !isPlaying.value) return
   const line = episode.value.transcript[idx]
@@ -147,24 +180,26 @@ async function playLine(idx: number) {
   currentTime.value = line.startTime
   stopTimer()
   stopLineAudio()
-  speaking.value = true
+  setBgmDucked(false)
 
   try {
-    const voice = line.speaker === '小暖' ? prefs.prefs.companion.voiceA : prefs.prefs.companion.voiceB
-    const audioUrl = await ttsApi.synthesize(line.text, voice, speedToRate(), line.speaker === '小暖' ? 'hostA' : 'hostB')
+    const audioUrl = await ensureLineAudio(idx)
     if (!isPlaying.value || currentLineIndex.value !== idx) return
     currentAudio = new Audio(audioUrl)
     currentAudio.playbackRate = playbackSpeed.value
+    warmupUpcomingLines(idx)
     currentAudio.onended = () => {
       speaking.value = false
+      setBgmDucked(false)
       currentAudio = null
       currentTime.value = line.endTime
-      lineDelay = setTimeout(() => playLine(idx + 1), LINE_GAP_MS)
+      void playLine(idx + 1)
     }
     currentAudio.onerror = () => {
       speaking.value = false
+      setBgmDucked(false)
       currentAudio = null
-      lineDelay = setTimeout(() => playLine(idx + 1), LINE_GAP_MS)
+      void playLine(idx + 1)
     }
     timer = setInterval(() => {
       if (currentAudio) {
@@ -172,10 +207,13 @@ async function playLine(idx: number) {
       }
     }, 250)
     await currentAudio.play()
+    speaking.value = true
+    setBgmDucked(true)
   } catch {
     speaking.value = false
+    setBgmDucked(false)
     currentAudio = null
-    lineDelay = setTimeout(() => playLine(idx + 1), LINE_GAP_MS)
+    void playLine(idx + 1)
   }
 }
 
@@ -201,12 +239,23 @@ async function generate() {
   stopTimer()
   stopLineAudio()
   stopBgm()
-  await podcastStore.generateBroadcast(news)
+  lineAudioCache.clear()
+  await podcastStore.generateBroadcast(news, prefs.userId)
 }
 
 onMounted(async () => {
-  await podcastStore.fetchLatest()
+  await podcastStore.fetchLatest(prefs.userId)
   if (!podcastStore.episode && newsStore.items.length > 0) await generate()
+  ensureLineAudio(0).catch(() => lineAudioCache.delete(0))
+  warmupUpcomingLines(0)
+})
+
+watch(() => [
+  prefs.prefs.companion.voiceA,
+  prefs.prefs.companion.voiceB,
+  prefs.prefs.companion.speed,
+], () => {
+  lineAudioCache.clear()
 })
 </script>
 

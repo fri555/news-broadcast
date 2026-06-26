@@ -94,6 +94,7 @@ export interface TranscriptLine {
   text: string
   startTime: number
   endTime: number
+  audioUrl?: string
 }
 
 // ── TTS ─────────────────────────────────────────

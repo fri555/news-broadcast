@@ -61,6 +61,7 @@ class TranscriptLine(BaseModel):
     text: str
     startTime: int
     endTime: int
+    audioUrl: str = ""
 
 
 class PodcastHost(BaseModel):

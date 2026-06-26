@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useAskStore } from '@/stores/ask'
 import ChatBubble from '@/components/ChatBubble.vue'
-import AskAvatar from '@/components/AskAvatar.vue'
+import Live2DAssistant from '@/components/Live2DAssistant.vue'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { Send, Mic, MicOff, AlertCircle, Plus } from 'lucide-vue-next'
 
@@ -50,7 +50,7 @@ function handleVoice() {
     </div>
 
     <div class="px-5 pb-3 shrink-0">
-      <AskAvatar :state="avatarState" :label="askStore.currentContext ? '追问助手' : '小暖'"/>
+      <Live2DAssistant :state="avatarState" :label="askStore.currentContext ? '追问助手' : '小暖'"/>
     </div>
 
     <div class="px-5 pb-2 flex items-center gap-2 shrink-0">

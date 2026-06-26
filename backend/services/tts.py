@@ -35,6 +35,28 @@ def _use_mimo_tts() -> bool:
     return TTS_PROVIDER == "mimo" and has_mimo_tts()
 
 
+def current_tts_provider() -> str:
+    return "mimo" if _use_mimo_tts() else ("openai" if _use_openai_tts() else "edge")
+
+
+def tts_cache_path(
+    text: str,
+    voice: Optional[str] = None,
+    rate: str = "+4%",
+    pitch: str = "+3Hz",
+    style: str = "news",
+) -> Path:
+    provider = current_tts_provider()
+    if _use_mimo_tts():
+        v = voice or MIMO_TTS_VOICE
+    elif _use_openai_tts():
+        v = voice if (voice and not voice.startswith("zh-CN-")) else OPENAI_TTS_VOICE
+    else:
+        v = voice or TTS_VOICE
+    cache_key = hashlib.md5(f"{provider}:{v}:{rate}:{pitch}:{style}:{text}".encode()).hexdigest()
+    return AUDIO_CACHE_DIR / f"{cache_key}.mp3"
+
+
 def _rate_to_speed(rate: str) -> float:
     try:
         value = int(str(rate).replace("%", "").replace("+", "").strip())
@@ -202,8 +224,6 @@ async def tts_to_file(
     style: str = "news",
 ) -> bool:
     """将 TTS 合成结果保存为 MP3 文件"""
-    provider = "mimo" if _use_mimo_tts() else ("openai" if _use_openai_tts() else "edge")
-
     if _use_mimo_tts():
         v = voice or MIMO_TTS_VOICE
     elif _use_openai_tts():
@@ -212,8 +232,7 @@ async def tts_to_file(
         v = voice or TTS_VOICE
 
     if not output_path:
-        cache_key = hashlib.md5(f"{provider}:{v}:{rate}:{style}:{text}".encode()).hexdigest()
-        output_path = AUDIO_CACHE_DIR / f"{cache_key}.mp3"
+        output_path = tts_cache_path(text, v, rate, pitch, style)
 
     if output_path.exists() and output_path.stat().st_size > 100:
         return True

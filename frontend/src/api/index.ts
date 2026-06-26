@@ -6,6 +6,13 @@ export const API_HEADERS = {
   'bypass-tunnel-reminder': 'true',
 }
 
+export function apiAssetUrl(path: string) {
+  if (!path) return ''
+  if (/^https?:\/\//.test(path) || path.startsWith('blob:')) return path
+  const root = API_BASE.endsWith('/api') ? API_BASE.slice(0, -4) : API_BASE
+  return `${root}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
     headers: API_HEADERS,
@@ -61,10 +68,10 @@ export const ttsApi = {
 // ── 播客 / 广播 ─────────────────────────────────
 
 export const podcastApi = {
-  latest: () => request<any>('/podcast/latest'),
+  latest: (userId = 'default') => request<any>(`/podcast/latest?user_id=${encodeURIComponent(userId)}`),
   /** 生成广播脚本 */
-  broadcast: (news: BroadcastNewsItem[]) =>
-    request<BroadcastResult>('/podcast/broadcast', {
+  broadcast: (news: BroadcastNewsItem[], userId = 'default') =>
+    request<BroadcastResult>(`/podcast/broadcast?user_id=${encodeURIComponent(userId)}`, {
       method: 'POST',
       body: JSON.stringify({ news }),
     }),

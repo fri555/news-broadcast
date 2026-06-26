@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useAskStore } from '@/stores/ask'
 import ChatBubble from './ChatBubble.vue'
-import AskAvatar from './AskAvatar.vue'
+import Live2DAssistant from './Live2DAssistant.vue'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { Send, Mic, MicOff, AlertCircle } from 'lucide-vue-next'
 
@@ -37,7 +37,7 @@ function handleVoice() { isListening.value ? stop() : start({ continuous: true }
           <div class="w-9 h-1 bg-app-muted rounded-full cursor-pointer" @click="$emit('close')" />
         </div>
         <div class="px-5 pb-3">
-          <AskAvatar :state="avatarState" :label="askStore.currentContext ? '追问助手' : '小暖'" />
+          <Live2DAssistant :state="avatarState" :label="askStore.currentContext ? '追问助手' : '小暖'" />
         </div>
         <div v-if="askStore.currentContext" class="mx-5 mb-2 px-3 py-1.5 bg-app-accent-light text-app-accent text-xs rounded-lg text-center truncate">
           📰 {{ askStore.currentContext.title?.slice(0, 30) }}...

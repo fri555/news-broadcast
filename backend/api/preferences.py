@@ -1,7 +1,7 @@
 """User preferences API — server-side JSON file storage."""
 import json
 from pathlib import Path
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 
@@ -58,10 +58,12 @@ async def get_prefs(user_id: str) -> dict:
 
 
 @router.put("/{user_id}")
-async def save_prefs(user_id: str, prefs: dict):
+async def save_prefs(user_id: str, prefs: dict, background_tasks: BackgroundTasks):
     """Save user preferences to server storage."""
     existing = _read(user_id)
     existing.update(prefs)
     existing["userId"] = user_id
     _write(user_id, existing)
+    from services.podcast_audio import prewarm_podcast_audio_for_user
+    background_tasks.add_task(prewarm_podcast_audio_for_user, user_id)
     return {"status": "ok", "userId": user_id}

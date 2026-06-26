@@ -10,10 +10,10 @@ export const usePodcastStore = defineStore('podcast', () => {
 
   const currentTranscript = computed<TranscriptLine | null>(() => null)
 
-  async function fetchLatest() {
+  async function fetchLatest(userId = 'default') {
     loading.value = true
     try {
-      const data = await podcastApi.latest()
+      const data = await podcastApi.latest(userId)
       if (data.message) {
         // Backend says "generate first"
         episode.value = null
@@ -30,11 +30,13 @@ export const usePodcastStore = defineStore('podcast', () => {
   /**
    * 从新闻列表生成广播脚本
    */
-  async function generateBroadcast(news: { title: string; summary: string; source: string; topic: string }[]) {
+  async function generateBroadcast(news: { title: string; summary: string; source: string; topic: string }[], userId = 'default') {
     loading.value = true
     try {
-      const result = await podcastApi.broadcast(news)
+      const result = await podcastApi.broadcast(news, userId)
       broadcast.value = result
+      await fetchLatest(userId)
+      if (episode.value) return
 
       // 将 BroadcastResult 转换为 PodcastEpisode 格式
       const script = result.script

@@ -1,13 +1,12 @@
 """
 TTS API — Edge TTS / OpenAI TTS / MiMo TTS 语音合成端点。
 """
-import hashlib
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
 from models import TTSRequest
-from services.tts import tts_stream, tts_to_file, _use_openai_tts, _use_mimo_tts, AUDIO_CACHE_DIR
+from services.tts import tts_stream, tts_to_file, _use_openai_tts, _use_mimo_tts, tts_cache_path
 from config import (
     TTS_VOICE, TTS_PROVIDER,
     OPENAI_TTS_VOICE,
@@ -66,11 +65,7 @@ async def tts_endpoint(req: TTSRequest):
 
     voice = _resolve_voice(req)
 
-    provider = "mimo" if _use_mimo_tts() else ("openai" if _use_openai_tts() else "edge")
-    cache_key = hashlib.md5(
-        f"{provider}:{voice}:{req.rate}:{req.pitch}:{req.style}:{req.text}".encode()
-    ).hexdigest()
-    audio_path = AUDIO_CACHE_DIR / f"{cache_key}.mp3"
+    audio_path = tts_cache_path(req.text, voice, req.rate, req.pitch, req.style)
 
     if not audio_path.exists():
         ok = await tts_to_file(req.text, voice, audio_path, req.rate, req.pitch, req.style)

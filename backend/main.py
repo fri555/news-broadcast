@@ -89,6 +89,8 @@ async def _preload_news():
             ]
             podcast = await get_or_generate_broadcast(podcast_source)
             write_podcast_snapshot(podcast)
+            from services.podcast_audio import prewarm_podcast_audio_for_known_users
+            await prewarm_podcast_audio_for_known_users()
         logger.info(f"Preload complete: {len(news_items)} items")
     except Exception as e:
         logger.warning(f"Preload failed (non-critical): {e}")
