@@ -6,6 +6,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { useRouter } from 'vue-router'
 import { apiAssetUrl, ttsApi } from '@/api'
 import { Play, Pause, SkipBack, SkipForward, Mic, ChevronDown, Sparkles, RefreshCw } from 'lucide-vue-next'
+import { claimSpeech, stopSpeech } from '@/lib/audioChannel'
 
 const router = useRouter()
 const podcastStore = usePodcastStore()
@@ -21,6 +22,7 @@ const subtitleContainer = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
 let currentAudio: HTMLAudioElement | null = null
 let bgmAudio: HTMLAudioElement | null = null
+let playGeneration = 0
 const lineAudioCache = new Map<number, Promise<string>>()
 const BGM_URL = 'https://freepd.com/music/City%20Sunshine.mp3'
 const BGM_IDLE_VOLUME = 0.12
@@ -36,14 +38,14 @@ const currentDisplayTime = computed(() => currentTime.value / effectivePlaybackR
 
 function toggle() {
   if (!episode.value || episode.value.transcript.length === 0) return
-  isPlaying.value = !isPlaying.value
   if (isPlaying.value) {
-    startBgm()
-    playLine(currentLineIndex.value)
+    isPlaying.value = false
+    stopPlayback()
   } else {
-    stopTimer()
-    stopLineAudio()
-    stopBgm()
+    isPlaying.value = true
+    const generation = ++playGeneration
+    startBgm()
+    void playLine(currentLineIndex.value, generation)
   }
 }
 
@@ -55,11 +57,18 @@ function speedToRate() {
 
 function stopLineAudio() {
   if (currentAudio) {
-    currentAudio.pause()
+    stopSpeech('podcast')
     currentAudio = null
   }
   speaking.value = false
   setBgmDucked(false)
+}
+
+function stopPlayback() {
+  playGeneration++
+  stopTimer()
+  stopLineAudio()
+  stopBgm()
 }
 
 function stopTimer() {
@@ -102,7 +111,12 @@ function setLineByTime(time: number) {
 function seekToDisplayTime(displayTime: number) {
   const baseTime = displayTime * effectivePlaybackRate.value
   setLineByTime(baseTime)
-  if (isPlaying.value) playLine(currentLineIndex.value)
+  if (isPlaying.value) {
+    const generation = ++playGeneration
+    stopTimer()
+    stopLineAudio()
+    void playLine(currentLineIndex.value, generation)
+  }
 }
 
 function seekByDisplayDelta(delta: number) {
@@ -126,7 +140,7 @@ watch(currentLineIndex, () => {
   }
 }, { flush: 'post' })
 
-onUnmounted(() => { stopTimer(); stopLineAudio(); stopBgm() })
+onUnmounted(() => { stopPlayback() })
 
 const progress = computed(() => {
   if (duration.value <= 0) return 0
@@ -165,14 +179,12 @@ function warmupUpcomingLines(idx: number) {
   ensureLineAudio(idx + 2).catch(() => lineAudioCache.delete(idx + 2))
 }
 
-async function playLine(idx: number) {
-  if (!episode.value || !isPlaying.value) return
+async function playLine(idx: number, generation = playGeneration) {
+  if (!episode.value || !isPlaying.value || generation !== playGeneration) return
   const line = episode.value.transcript[idx]
   if (!line) {
     isPlaying.value = false
-    stopTimer()
-    stopLineAudio()
-    stopBgm()
+    stopPlayback()
     return
   }
 
@@ -184,36 +196,45 @@ async function playLine(idx: number) {
 
   try {
     const audioUrl = await ensureLineAudio(idx)
-    if (!isPlaying.value || currentLineIndex.value !== idx) return
-    currentAudio = new Audio(audioUrl)
-    currentAudio.playbackRate = playbackSpeed.value
+    if (!isPlaying.value || currentLineIndex.value !== idx || generation !== playGeneration) return
+    const audio = new Audio(audioUrl)
+    currentAudio = audio
+    audio.playbackRate = playbackSpeed.value
+    claimSpeech(audio, 'podcast')
     warmupUpcomingLines(idx)
-    currentAudio.onended = () => {
+    audio.onended = () => {
+      if (generation !== playGeneration) return
       speaking.value = false
       setBgmDucked(false)
       currentAudio = null
       currentTime.value = line.endTime
-      void playLine(idx + 1)
+      void playLine(idx + 1, generation)
     }
-    currentAudio.onerror = () => {
+    audio.onerror = () => {
+      if (generation !== playGeneration) return
       speaking.value = false
       setBgmDucked(false)
       currentAudio = null
-      void playLine(idx + 1)
+      void playLine(idx + 1, generation)
     }
     timer = setInterval(() => {
-      if (currentAudio) {
-        currentTime.value = Math.min(line.endTime, line.startTime + currentAudio.currentTime)
+      if (currentAudio === audio && generation === playGeneration) {
+        currentTime.value = Math.min(line.endTime, line.startTime + audio.currentTime)
       }
     }, 250)
-    await currentAudio.play()
+    await audio.play()
+    if (generation !== playGeneration) {
+      audio.pause()
+      return
+    }
     speaking.value = true
     setBgmDucked(true)
   } catch {
+    if (generation !== playGeneration) return
     speaking.value = false
     setBgmDucked(false)
     currentAudio = null
-    void playLine(idx + 1)
+    void playLine(idx + 1, generation)
   }
 }
 
@@ -236,9 +257,7 @@ async function generate() {
   }))
   currentTime.value = 0; isPlaying.value = false
   currentLineIndex.value = 0
-  stopTimer()
-  stopLineAudio()
-  stopBgm()
+  stopPlayback()
   lineAudioCache.clear()
   await podcastStore.generateBroadcast(news, prefs.userId)
 }

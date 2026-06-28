@@ -7,6 +7,7 @@ import NewsDetail from './NewsDetail.vue'
 import { ChevronLeft, ChevronRight, Grid3X3, Columns, Volume2, RefreshCw } from 'lucide-vue-next'
 import type { NewsItem } from '@/types'
 import { ttsApi } from '@/api'
+import { claimSpeech, isClaimedSpeech, stopSpeech } from '@/lib/audioChannel'
 
 const store = useNewsStore()
 const prefs = usePreferencesStore()
@@ -15,27 +16,42 @@ const detailItem = ref<NewsItem | null>(null)
 const listMode = ref(false)
 const speakingId = ref<string | null>(null)
 let currentAudio: HTMLAudioElement | null = null
+let speakRequestId = 0
 
 function openDetail(item: NewsItem) { detailItem.value = item; showDetail.value = true }
 function closeDetail() { showDetail.value = false; detailItem.value = null }
 
 /** TTS 朗读单条新闻 */
 async function speakNews(item: NewsItem) {
-  if (speakingId.value === item.id && currentAudio) {
-    currentAudio.pause(); currentAudio = null; speakingId.value = null; return
+  if (speakingId.value === item.id && isClaimedSpeech(currentAudio, 'news-card')) {
+    speakRequestId++
+    stopSpeech('news-card')
+    currentAudio = null
+    speakingId.value = null
+    return
   }
-  if (currentAudio) { currentAudio.pause(); currentAudio = null }
+  speakRequestId++
+  const requestId = speakRequestId
+  stopSpeech()
+  currentAudio = null
   speakingId.value = item.id
   try {
     const text = item.read_aloud || item.summary || item.title
     const rate = `${Math.round((prefs.prefs.companion.speed - 1) * 100) >= 0 ? '+' : ''}${Math.round((prefs.prefs.companion.speed - 1) * 100)}%`
     const audioUrl = await ttsApi.synthesize(text, prefs.prefs.companion.voiceId, rate, 'news')
+    if (requestId !== speakRequestId || speakingId.value !== item.id) return
     const audio = new Audio(audioUrl)
     currentAudio = audio
-    audio.onended = () => { speakingId.value = null; currentAudio = null }
-    audio.onerror = () => { speakingId.value = null; currentAudio = null }
+    claimSpeech(audio, 'news-card')
+    audio.onended = () => { if (requestId === speakRequestId) { speakingId.value = null; currentAudio = null } }
+    audio.onerror = () => { if (requestId === speakRequestId) { speakingId.value = null; currentAudio = null } }
     await audio.play()
-  } catch { speakingId.value = null; currentAudio = null }
+  } catch {
+    if (requestId === speakRequestId) {
+      speakingId.value = null
+      currentAudio = null
+    }
+  }
 }
 
 /** 静默后台刷新（不显示 loading） */

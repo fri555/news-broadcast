@@ -5,6 +5,7 @@ import { useAskStore } from '@/stores/ask'
 import { usePreferencesStore } from '@/stores/preferences'
 import { computed, ref } from 'vue'
 import { ttsApi } from '@/api'
+import { claimSpeech, isClaimedSpeech, stopSpeech } from '@/lib/audioChannel'
 
 const props = defineProps<{ item: NewsItem }>()
 const emit = defineEmits<{ close: [] }>()
@@ -13,6 +14,7 @@ const prefs = usePreferencesStore()
 
 const speaking = ref(false)
 let currentAudio: HTMLAudioElement | null = null
+let speakRequestId = 0
 
 const detail = computed(() => props.item.detail || {})
 const keyFacts = computed(() => detail.value.key_facts?.filter(Boolean) || [])
@@ -49,22 +51,35 @@ function openOriginal() {
 
 /** TTS 朗读全文 */
 async function speakFull() {
-  if (speaking.value && currentAudio) {
-    currentAudio.pause(); currentAudio = null; speaking.value = false; return
+  if (speaking.value && isClaimedSpeech(currentAudio, 'news-detail')) {
+    speakRequestId++
+    stopSpeech('news-detail')
+    currentAudio = null
+    speaking.value = false
+    return
   }
-  // 停止旧的
-  if (currentAudio) { currentAudio.pause(); currentAudio = null }
+  speakRequestId++
+  const requestId = speakRequestId
+  stopSpeech()
+  currentAudio = null
   speaking.value = true
   try {
     const text = props.item.read_aloud || props.item.summary
     const speedPercent = Math.round((prefs.prefs.companion.speed - 1) * 100)
     const rate = `${speedPercent >= 0 ? '+' : ''}${speedPercent}%`
     const audioUrl = await ttsApi.synthesize(text, prefs.prefs.companion.voiceId, rate, 'news')
+    if (requestId !== speakRequestId || !speaking.value) return
     currentAudio = new Audio(audioUrl)
-    currentAudio.onended = () => { speaking.value = false; currentAudio = null }
-    currentAudio.onerror = () => { speaking.value = false; currentAudio = null }
+    claimSpeech(currentAudio, 'news-detail')
+    currentAudio.onended = () => { if (requestId === speakRequestId) { speaking.value = false; currentAudio = null } }
+    currentAudio.onerror = () => { if (requestId === speakRequestId) { speaking.value = false; currentAudio = null } }
     await currentAudio.play()
-  } catch { speaking.value = false; currentAudio = null }
+  } catch {
+    if (requestId === speakRequestId) {
+      speaking.value = false
+      currentAudio = null
+    }
+  }
 }
 
 const emojiMap: Record<string, string> = {
